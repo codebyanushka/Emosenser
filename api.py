@@ -1,9 +1,9 @@
-# Set the device with environment, default is cuda:0
-# export SENSEVOICE_DEVICE=cuda:1
+# Set the device with environment, default is cpu
 
 import os, re
 from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.responses import HTMLResponse
+from fastapi.middleware.cors import CORSMiddleware
 from typing_extensions import Annotated
 from typing import List
 from enum import Enum
@@ -26,12 +26,20 @@ class Language(str, Enum):
 
 
 model_dir = "iic/SenseVoiceSmall"
-m, kwargs = SenseVoiceSmall.from_pretrained(model=model_dir, device=os.getenv("SENSEVOICE_DEVICE", "cuda:0"))
+m, kwargs = SenseVoiceSmall.from_pretrained(model=model_dir, device=os.getenv("SENSEVOICE_DEVICE", "cpu"))
 m.eval()
 
 regex = r"<\|.*\|>"
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -61,7 +69,6 @@ async def turn_audio_to_text(
         file_io = BytesIO(await file.read())
         data_or_path_or_list, audio_fs = torchaudio.load(file_io)
 
-        # transform to target sample
         if audio_fs != TARGET_FS:
             resampler = torchaudio.transforms.Resample(orig_freq=audio_fs, new_freq=TARGET_FS)
             data_or_path_or_list = resampler(data_or_path_or_list)
@@ -79,7 +86,7 @@ async def turn_audio_to_text(
 
     res = m.inference(
         data_in=audios,
-        language=lang,  # "zh", "en", "yue", "ja", "ko", "nospeech"
+        language=lang,
         use_itn=False,
         ban_emo_unk=False,
         key=key,
@@ -97,5 +104,4 @@ async def turn_audio_to_text(
 
 if __name__ == "__main__":
     import uvicorn
-
     uvicorn.run(app, host="0.0.0.0", port=50000)
